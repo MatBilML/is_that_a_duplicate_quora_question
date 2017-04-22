@@ -7,7 +7,7 @@ from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM, GRU
 from keras.layers.normalization import BatchNormalization
 from keras.utils import np_utils
-from keras.engine.topology import Merge
+from keras.layers import Merge
 from keras.layers import TimeDistributed, Lambda
 from keras.layers import Convolution1D, GlobalMaxPooling1D
 from keras.callbacks import ModelCheckpoint
