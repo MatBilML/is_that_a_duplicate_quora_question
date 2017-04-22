@@ -30,6 +30,7 @@ x2 = sequence.pad_sequences(x2, maxlen=max_len)
 
 word_index = tk.word_index
 
+
 ytrain_enc = np_utils.to_categorical(y)
 
 embeddings_index = {}
