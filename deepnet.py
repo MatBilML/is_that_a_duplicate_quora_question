@@ -27,6 +27,9 @@ features = pd.read_csv('data/quora_features.csv')
 common_words = features.common_words.values
 common_words_dim = max(common_words) + 1
 
+print type(common_words)
+print common_words.shape
+
 common_words_oh = features.common_words.apply(lambda x: one_hot(x, common_words_dim))
 # for i in common_words:
 #     common_words_oh.append(one_hot(i, common_words_dim))
@@ -52,6 +55,9 @@ max_len = 40
 tk.fit_on_texts(list(data.question1.values) + list(data.question2.values.astype(str)))
 x1 = tk.texts_to_sequences(data.question1.values)
 x1 = sequence.pad_sequences(x1, maxlen=max_len)
+
+print type(x1)
+print x1.shape
 
 x2 = tk.texts_to_sequences(data.question2.values.astype(str))
 x2 = sequence.pad_sequences(x2, maxlen=max_len)
@@ -166,8 +172,8 @@ model6.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
 model6.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
 
 model7 = Sequential()
-model7.add(Embedding(common_words_dim, common_words_dim, input_length=common_words_dim))
-model7.add(LSTM(common_words_dim, dropout_W=0.2, dropout_U=0.2))
+model7.add(Embedding(common_words_dim, 10, input_length=1))
+model7.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
 
 merged_model = Sequential()
 merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7], mode='concat'))
@@ -205,5 +211,5 @@ merged_model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['acc
 
 checkpoint = ModelCheckpoint('weights.h5', monitor='val_acc', save_best_only=True, verbose=2)
 
-merged_model.fit([x1, x2, x1, x2, x1, x2, common_words_oh], y=y, batch_size=384, nb_epoch=2,
+merged_model.fit([x1, x2, x1, x2, x1, x2, common_words], y=y, batch_size=384, nb_epoch=2,
                  verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
