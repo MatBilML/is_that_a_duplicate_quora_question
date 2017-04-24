@@ -15,7 +15,35 @@ from keras import backend as K
 from keras.layers.advanced_activations import PReLU
 from keras.preprocessing import sequence, text
 
+
+def one_hot(pos, dim):
+    oh = np.zeros(dim)
+    oh[pos] = 1
+    return oh
+
 data = pd.read_csv('data/quora_duplicate_questions.tsv', sep='\t')
+features = pd.read_csv('data/quora_features.csv')
+
+common_words = features.common_words.values
+common_words_dim = max(common_words) + 1
+
+common_words_oh = features.common_words.apply(lambda x: one_hot(x, common_words_dim))
+# for i in common_words:
+#     common_words_oh.append(one_hot(i, common_words_dim))
+
+print type(common_words_oh)
+print common_words_oh
+
+# common_words_reshaped = np.reshape(common_words_oh, (common_words_oh.shape[0], common_words_dim))
+# print common_words_reshaped.shape
+# print common_words_reshaped
+
+# model7 = Sequential()
+# model7.add(LSTM(common_words_dim, input_dim=common_words_dim, dropout_W=0.2, dropout_U=0.2))
+model7 = Sequential()
+model7.add(Embedding(common_words_dim, common_words_dim, input_length=common_words_dim))
+model7.add(LSTM(common_words_dim, dropout_W=0.2, dropout_U=0.2))
+
 y = data.is_duplicate.values
 
 tk = text.Tokenizer(nb_words=200000)
@@ -137,8 +165,12 @@ model6 = Sequential()
 model6.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
 model6.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
 
+model7 = Sequential()
+model7.add(Embedding(common_words_dim, common_words_dim, input_length=common_words_dim))
+model7.add(LSTM(common_words_dim, dropout_W=0.2, dropout_U=0.2))
+
 merged_model = Sequential()
-merged_model.add(Merge([model1, model2, model3, model4, model5, model6], mode='concat'))
+merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7], mode='concat'))
 merged_model.add(BatchNormalization())
 
 merged_model.add(Dense(300))
@@ -173,5 +205,5 @@ merged_model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['acc
 
 checkpoint = ModelCheckpoint('weights.h5', monitor='val_acc', save_best_only=True, verbose=2)
 
-merged_model.fit([x1, x2, x1, x2, x1, x2], y=y, batch_size=384, nb_epoch=200,
+merged_model.fit([x1, x2, x1, x2, x1, x2, common_words_oh], y=y, batch_size=384, nb_epoch=2,
                  verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
