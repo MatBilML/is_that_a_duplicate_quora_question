@@ -17,7 +17,9 @@ from keras.preprocessing import sequence, text
 import nltk as nt
 import time
 import datetime
+import sys
 
+NUM_EPOCHS = 2
 
 # Helper functions
 
@@ -59,6 +61,14 @@ def get_pos_tag_sequence_padded(questions, max_length):
 
 
 # Main execution
+
+baseline = False
+if len(sys.argv) == 1:
+    baseline = False
+    print get_current_time(), 'Running latest version.'
+elif sys.argv[1] == 'baseline':
+    baseline = True
+    print get_current_time(), 'Running baseline version.'
 
 print get_current_time(), 'Starting execution . . .'
 pos_tags = {}
@@ -235,7 +245,10 @@ model9.add(Embedding(len(pos_tags) + 1, 10, input_length=max_len))
 model9.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
 
 merged_model = Sequential()
-merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7, model8, model9], mode='concat'))
+if baseline:
+    merged_model.add(Merge([model1, model2, model3, model4, model5, model6], mode='concat'))
+else:
+    merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7, model8, model9], mode='concat'))
 merged_model.add(BatchNormalization())
 
 merged_model.add(Dense(300))
@@ -270,5 +283,9 @@ merged_model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['acc
 
 checkpoint = ModelCheckpoint('weights.h5', monitor='val_acc', save_best_only=True, verbose=2)
 
-merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_pos_tags, q2_pos_tags], y=y, batch_size=384, nb_epoch=2,
-                 verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
+if baseline:
+    merged_model.fit([x1, x2, x1, x2, x1, x2], y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
+                     verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
+else:
+    merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_pos_tags, q2_pos_tags], y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
+                     verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
