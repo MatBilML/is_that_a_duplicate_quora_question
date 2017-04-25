@@ -18,6 +18,9 @@ import nltk as nt
 import time
 import datetime
 
+
+# Helper functions
+
 def one_hot(pos, dim):
     oh = np.zeros(dim)
     oh[pos] = 1
@@ -29,8 +32,35 @@ def get_id(pos, dic):
         dic[pos] = len(dic)
     return dic[pos]
 
-ts = time.time()
-print datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+
+def print_current_time():
+    print get_current_time()
+
+
+def get_current_time():
+    ts = time.time()
+    return datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S') + ' '
+
+
+def get_pos_tag_sequence_padded(questions, max_length):
+    q_pos_tags = []
+    for question in questions:
+        try:
+            tokens = nt.word_tokenize(question)
+            tags = nt.pos_tag(tokens)
+            current_posvec = []
+            for index in range(len(tags)):
+                current_posvec.append(get_id(tags[index][1], pos_tags))
+            q_pos_tags.append(current_posvec)
+        except:
+            q_pos_tags.append([0])
+    q_pos_tags = sequence.pad_sequences(q_pos_tags, maxlen=max_length)
+    return q_pos_tags
+
+
+# Main execution
+
+print get_current_time(), 'Starting execution . . .'
 pos_tags = {}
 
 data = pd.read_csv('data/quora_duplicate_questions.tsv', sep='\t')
@@ -39,8 +69,8 @@ features = pd.read_csv('data/quora_features.csv')
 common_words = features.common_words.values
 common_words_dim = max(common_words) + 1
 
-print type(common_words)
-print common_words.shape
+print get_current_time(), 'type(common_words): ', type(common_words)
+print get_current_time(), 'common_words.shape: ', common_words.shape
 
 # common_words_oh = features.common_words.apply(lambda x: one_hot(x, common_words_dim))
 # for i in common_words:
@@ -59,10 +89,6 @@ print common_words.shape
 # model7.add(Embedding(common_words_dim, common_words_dim, input_length=common_words_dim))
 # model7.add(LSTM(common_words_dim, dropout_W=0.2, dropout_U=0.2))
 
-
-ts = time.time()
-print datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-
 y = data.is_duplicate.values
 
 tk = text.Tokenizer(nb_words=200000)
@@ -72,55 +98,25 @@ tk.fit_on_texts(list(data.question1.values) + list(data.question2.values.astype(
 x1 = tk.texts_to_sequences(data.question1.values)
 x1 = sequence.pad_sequences(x1, maxlen=max_len)
 
-print type(x1)
-print x1.shape
+print get_current_time(), 'type(x1): ', type(x1)
+print get_current_time(), 'x1.shape: ', x1.shape
 
 x2 = tk.texts_to_sequences(data.question2.values.astype(str))
 x2 = sequence.pad_sequences(x2, maxlen=max_len)
 
-q1_pos_tags = []
-for q in data.question1:
-    #print q
-    try:
-    	question = nt.word_tokenize(q)
-    	tags = nt.pos_tag(question)
-    	current_posvec = []
-    	for i in range(len(tags)):
-        	#postagid = get_id(tags[i][1],pos_tags)
-		current_posvec.append(get_id(tags[i][1],pos_tags))
-	q1_pos_tags.append(current_posvec)
-    except:
-        q1_pos_tags.append([0])
-q1_pos_tags = sequence.pad_sequences(q1_pos_tags, maxlen=max_len)
-print q1_pos_tags
+print get_current_time(), 'Getting POS tags for q1 set . . .'
+q1_pos_tags = get_pos_tag_sequence_padded(data.question1, max_len)
+print get_current_time(), 'q1_pos_tags: ', q1_pos_tags
 
-ts = time.time()
-print datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-
-q2_pos_tags = []
-for q in data.question2:
-    #print q
-    try:
-    	question = nt.word_tokenize(q)
-    	tags = nt.pos_tag(question)
-    	current_posvec = []
-    	for i in range(len(tags)):
-        	#postagid = get_id(tags[i][1],pos_tags)
-		current_posvec.append(get_id(tags[i][1],pos_tags))
-	q2_pos_tags.append(current_posvec)
-    except:
-        q2_pos_tags.append([0])
-q2_pos_tags = sequence.pad_sequences(q2_pos_tags, maxlen=max_len)
-
-print q2_pos_tags
-ts = time.time()
-print datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+print get_current_time(), 'Getting POS tags for q2 set . . .'
+q2_pos_tags = get_pos_tag_sequence_padded(data.question2, max_len)
+print get_current_time(), 'q2_pos_tags: ', q2_pos_tags
 
 word_index = tk.word_index
 
-
 ytrain_enc = np_utils.to_categorical(y)
 
+print get_current_time(), 'Generating embedding index . . .'
 embeddings_index = {}
 f = open('data/glove.840B.300d.txt')
 for line in tqdm(f):
@@ -130,13 +126,14 @@ for line in tqdm(f):
     embeddings_index[word] = coefs
 f.close()
 
-print('Found %s word vectors.' % len(embeddings_index))
+print(get_current_time() + 'Found %s word vectors.' % len(embeddings_index))
 
 embedding_matrix = np.zeros((len(word_index) + 1, 300))
 for word, i in tqdm(word_index.items()):
     embedding_vector = embeddings_index.get(word)
     if embedding_vector is not None:
         embedding_matrix[i] = embedding_vector
+print get_current_time(), 'Embedding matrix generated . . .'
 
 max_features = 200000
 filter_length = 5
@@ -144,7 +141,7 @@ nb_filter = 64
 pool_length = 4
 
 model = Sequential()
-print('Build model...')
+print(get_current_time() + 'Building model...')
 
 model1 = Sequential()
 model1.add(Embedding(len(word_index) + 1,
@@ -230,11 +227,11 @@ model7.add(Embedding(common_words_dim, 10, input_length=1))
 model7.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
 
 model8 = Sequential()
-model8.add(Embedding(len(pos_tags)+1, 10, input_length=max_len))
+model8.add(Embedding(len(pos_tags) + 1, 10, input_length=max_len))
 model8.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
 
 model9 = Sequential()
-model9.add(Embedding(len(pos_tags)+1, 10, input_length=max_len))
+model9.add(Embedding(len(pos_tags) + 1, 10, input_length=max_len))
 model9.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
 
 merged_model = Sequential()
