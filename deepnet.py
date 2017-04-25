@@ -14,12 +14,24 @@ from keras.callbacks import ModelCheckpoint
 from keras import backend as K
 from keras.layers.advanced_activations import PReLU
 from keras.preprocessing import sequence, text
-
+import nltk as nt
+import time
+import datetime
 
 def one_hot(pos, dim):
     oh = np.zeros(dim)
     oh[pos] = 1
     return oh
+
+
+def get_id(pos, dic):
+    if pos not in dic:
+        dic[pos] = len(dic)
+    return dic[pos]
+
+ts = time.time()
+print datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+pos_tags = {}
 
 data = pd.read_csv('data/quora_duplicate_questions.tsv', sep='\t')
 features = pd.read_csv('data/quora_features.csv')
@@ -30,12 +42,12 @@ common_words_dim = max(common_words) + 1
 print type(common_words)
 print common_words.shape
 
-common_words_oh = features.common_words.apply(lambda x: one_hot(x, common_words_dim))
+# common_words_oh = features.common_words.apply(lambda x: one_hot(x, common_words_dim))
 # for i in common_words:
 #     common_words_oh.append(one_hot(i, common_words_dim))
 
-print type(common_words_oh)
-print common_words_oh
+# print type(common_words_oh)
+# print common_words_oh
 
 # common_words_reshaped = np.reshape(common_words_oh, (common_words_oh.shape[0], common_words_dim))
 # print common_words_reshaped.shape
@@ -43,9 +55,13 @@ print common_words_oh
 
 # model7 = Sequential()
 # model7.add(LSTM(common_words_dim, input_dim=common_words_dim, dropout_W=0.2, dropout_U=0.2))
-model7 = Sequential()
-model7.add(Embedding(common_words_dim, common_words_dim, input_length=common_words_dim))
-model7.add(LSTM(common_words_dim, dropout_W=0.2, dropout_U=0.2))
+# model7 = Sequential()
+# model7.add(Embedding(common_words_dim, common_words_dim, input_length=common_words_dim))
+# model7.add(LSTM(common_words_dim, dropout_W=0.2, dropout_U=0.2))
+
+
+ts = time.time()
+print datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
 
 y = data.is_duplicate.values
 
@@ -61,6 +77,44 @@ print x1.shape
 
 x2 = tk.texts_to_sequences(data.question2.values.astype(str))
 x2 = sequence.pad_sequences(x2, maxlen=max_len)
+
+q1_pos_tags = []
+for q in data.question1:
+    #print q
+    try:
+    	question = nt.word_tokenize(q)
+    	tags = nt.pos_tag(question)
+    	current_posvec = []
+    	for i in range(len(tags)):
+        	#postagid = get_id(tags[i][1],pos_tags)
+		current_posvec.append(get_id(tags[i][1],pos_tags))
+	q1_pos_tags.append(current_posvec)
+    except:
+        q1_pos_tags.append([0])
+q1_pos_tags = sequence.pad_sequences(q1_pos_tags, maxlen=max_len)
+print q1_pos_tags
+
+ts = time.time()
+print datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
+
+q2_pos_tags = []
+for q in data.question2:
+    #print q
+    try:
+    	question = nt.word_tokenize(q)
+    	tags = nt.pos_tag(question)
+    	current_posvec = []
+    	for i in range(len(tags)):
+        	#postagid = get_id(tags[i][1],pos_tags)
+		current_posvec.append(get_id(tags[i][1],pos_tags))
+	q2_pos_tags.append(current_posvec)
+    except:
+        q2_pos_tags.append([0])
+q2_pos_tags = sequence.pad_sequences(q2_pos_tags, maxlen=max_len)
+
+print q2_pos_tags
+ts = time.time()
+print datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
 
 word_index = tk.word_index
 
@@ -175,8 +229,16 @@ model7 = Sequential()
 model7.add(Embedding(common_words_dim, 10, input_length=1))
 model7.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
 
+model8 = Sequential()
+model8.add(Embedding(len(pos_tags)+1, 10, input_length=max_len))
+model8.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
+
+model9 = Sequential()
+model9.add(Embedding(len(pos_tags)+1, 10, input_length=max_len))
+model9.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
+
 merged_model = Sequential()
-merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7], mode='concat'))
+merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7, model8, model9], mode='concat'))
 merged_model.add(BatchNormalization())
 
 merged_model.add(Dense(300))
@@ -211,5 +273,5 @@ merged_model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['acc
 
 checkpoint = ModelCheckpoint('weights.h5', monitor='val_acc', save_best_only=True, verbose=2)
 
-merged_model.fit([x1, x2, x1, x2, x1, x2, common_words], y=y, batch_size=384, nb_epoch=2,
+merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_pos_tags, q2_pos_tags], y=y, batch_size=384, nb_epoch=2,
                  verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
