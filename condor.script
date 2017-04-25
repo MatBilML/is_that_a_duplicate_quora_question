@@ -1,0 +1,25 @@
+Initialdir = /u/pandian/nlp_project/is_that_a_duplicate_quora_question
+
+Executable = /bin/sh
+
++Group   = "GRAD"
++Project = "INSTRUCTIONAL"
++ProjectDescription = "CS 388 Project - Quora Duplicate Question Detection"
+
+#environment = CLASSPATH = /u/mkshah/miniconda3/lib/python3.6/site-packages
+getenv = true
+universe = vanilla
+
+Notification = complete
+Notify_user = pandian@cs.utexas.edu
+
++GPUJob = true
+requirements = eldar-1
+
+arguments = /u/pandian/nlp_project/is_that_a_duplicate_quora_question/trigger.sh
+Log = /u/pandian/nlp_project/is_that_a_duplicate_quora_question/log.log
+Output = /u/pandian/nlp_project/is_that_a_duplicate_quora_question/output.log
+Error  = /u/pandian/nlp_project/is_that_a_duplicate_quora_question/error.log
+
+Queue 1
+
