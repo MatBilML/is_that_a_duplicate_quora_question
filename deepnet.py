@@ -288,56 +288,7 @@ else:
         else:
             model5.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
 
-# model5
-if opts.attention == 1:
-    model5_ip = Input(shape=(40,))
-    x5 = Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2)(model5_ip)
-    if opts.cnn == 1:
-        x5 = Conv1D(64, 5, padding='valid', activation='relu', strides=1)(x5)
-        x5 = MaxPooling1D(pool_size=4)(x5)
-    if opts.bilstm == 1:
-        if opts.regularize == 1:
-            x5 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01)))(
-                x5)
-        else:
-            x5 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True))(x5)
-    else:
-        if opts.regularize == 1:
-            x5 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01))(
-                x5)
-        else:
-            x5 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True)(x5)
 
-    attention5 = TimeDistributed(Dense(1, activation='tanh'))(x5)
-    attention5 = Flatten()(attention5)
-    attention5 = Activation('softmax')(attention5)
-    attention5 = RepeatVector(600)(attention5)
-    attention5 = Permute([2, 1])(attention5)
-
-    merge5 = merge([x5, attention5], mode='mul')
-    merge5 = Lambda(lambda xin: K.sum(xin, axis=1))(merge5)
-    merge5 = Dense(300, activation='softmax')(merge5)
-
-    model5 = Model(input=model5_ip, output=merge5)
-    print model5.summary()
-
-else:
-    model5 = Sequential()
-    model5.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
-    if opts.cnn == 1:
-        model5.add(Conv1D(64, 5, padding='valid', activation='relu', strides=1))
-        model5.add(MaxPooling1D(pool_size=4))
-    if opts.bilstm == 1:
-        if opts.regularize == 1:
-            model5.add(Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01))))
-        else:
-            model5.add(Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2)))
-    else:
-        if opts.regularize == 1:
-            model5.add(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01)))
-        else:
-            model5.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
-        print model5.summary()
 # model6
 if opts.attention == 1:
     model6_ip = Input(shape=(40,))
