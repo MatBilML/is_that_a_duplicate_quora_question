@@ -7,9 +7,9 @@ from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM, GRU
 from keras.layers.normalization import BatchNormalization
 from keras.utils import np_utils
-from keras.layers import Merge
+from keras.layers import Merge, Flatten,Permute, RepeatVector, merge, Input
 from keras.layers import TimeDistributed, Lambda
-from keras.layers import Convolution1D, GlobalMaxPooling1D
+from keras.layers import Convolution1D, GlobalMaxPooling1D, Conv1D, MaxPooling1D, Bidirectional
 from keras.callbacks import ModelCheckpoint
 from keras import backend as K
 from keras.layers.advanced_activations import PReLU
@@ -18,8 +18,10 @@ import nltk as nt
 import time
 import datetime
 import sys
+import optparse
+from keras.regularizers import l1, l2
+from keras.models import Model
 
-NUM_EPOCHS = 2
 
 # Helper functions
 
@@ -60,14 +62,41 @@ def get_pos_tag_sequence_padded(questions, max_length):
     return q_pos_tags
 
 
-# Main execution
+def parseOptions():
+    optParser = optparse.OptionParser()
+    optParser.add_option('-b', '--baseline', action='store',
+                         type='int', dest='baseline', default=0,
+                         help='Run baseline version?')
+    optParser.add_option('-a', '--attention', action='store',
+                         type='int', dest='attention', default=0,
+                         help='Include attention in the model?')
+    optParser.add_option('-c', '--cnn', action='store',
+                         type='int', dest='cnn', default=1,
+                         help='add cnn before LSTM?')
+    optParser.add_option('-r', '--regularization', action='store',
+                         type='int', dest='regularize', default=0,
+                         help='L2 regularization in LSTM')
+    optParser.add_option('-l', '--bilstm', action='store',
+                         type='int', dest='bilstm', default=1,
+                         help='Use bilstm')
+    optParser.add_option('-p', '--postags', action='store',
+                         type='int', dest='postags', default=0,
+                         help='Include postags in the model')
+    optParser.add_option('-e', '--epochs', action='store',
+                         type='int', dest='epochs', default=2,
+                         help='Number of epochs')
 
-baseline = False
-if len(sys.argv) == 1:
-    baseline = False
+    opts, args = optParser.parse_args()
+    return opts
+
+
+# Main execution
+opts = parseOptions()
+print opts
+NUM_EPOCHS = opts.epochs
+if opts.baseline == 0:
     print get_current_time(), 'Running latest version.'
-elif sys.argv[1] == 'baseline':
-    baseline = True
+else:
     print get_current_time(), 'Running baseline version.'
 
 print get_current_time(), 'Starting execution . . .'
@@ -81,23 +110,6 @@ common_words_dim = max(common_words) + 1
 
 print get_current_time(), 'type(common_words): ', type(common_words)
 print get_current_time(), 'common_words.shape: ', common_words.shape
-
-# common_words_oh = features.common_words.apply(lambda x: one_hot(x, common_words_dim))
-# for i in common_words:
-#     common_words_oh.append(one_hot(i, common_words_dim))
-
-# print type(common_words_oh)
-# print common_words_oh
-
-# common_words_reshaped = np.reshape(common_words_oh, (common_words_oh.shape[0], common_words_dim))
-# print common_words_reshaped.shape
-# print common_words_reshaped
-
-# model7 = Sequential()
-# model7.add(LSTM(common_words_dim, input_dim=common_words_dim, dropout_W=0.2, dropout_U=0.2))
-# model7 = Sequential()
-# model7.add(Embedding(common_words_dim, common_words_dim, input_length=common_words_dim))
-# model7.add(LSTM(common_words_dim, dropout_W=0.2, dropout_U=0.2))
 
 y = data.is_duplicate.values
 
@@ -114,13 +126,14 @@ print get_current_time(), 'x1.shape: ', x1.shape
 x2 = tk.texts_to_sequences(data.question2.values.astype(str))
 x2 = sequence.pad_sequences(x2, maxlen=max_len)
 
-print get_current_time(), 'Getting POS tags for q1 set . . .'
-q1_pos_tags = get_pos_tag_sequence_padded(data.question1, max_len)
-print get_current_time(), 'q1_pos_tags: ', q1_pos_tags
+if opts.postags==1:
+    print get_current_time(), 'Getting POS tags for q1 set . . .'
+    q1_pos_tags = get_pos_tag_sequence_padded(data.question1, max_len)
+    print get_current_time(), 'q1_pos_tags: ', q1_pos_tags
 
-print get_current_time(), 'Getting POS tags for q2 set . . .'
-q2_pos_tags = get_pos_tag_sequence_padded(data.question2, max_len)
-print get_current_time(), 'q2_pos_tags: ', q2_pos_tags
+    print get_current_time(), 'Getting POS tags for q2 set . . .'
+    q2_pos_tags = get_pos_tag_sequence_padded(data.question2, max_len)
+    print get_current_time(), 'q2_pos_tags: ', q2_pos_tags
 
 word_index = tk.word_index
 
@@ -150,7 +163,6 @@ filter_length = 5
 nb_filter = 64
 pool_length = 4
 
-model = Sequential()
 print(get_current_time() + 'Building model...')
 
 model1 = Sequential()
@@ -224,31 +236,132 @@ model4.add(Dropout(0.2))
 model4.add(Dense(300))
 model4.add(Dropout(0.2))
 model4.add(BatchNormalization())
-model5 = Sequential()
-model5.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
-model5.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
 
-model6 = Sequential()
-model6.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
-model6.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
+#model5
+if opts.attention == 1:
+    model5_ip = Input(shape=(40,))
+    x5 = Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2)(model5_ip)
+    if opts.cnn == 1:
+        x5 = Conv1D(64, 5, padding='valid', activation='relu', strides=1)(x5)
+        x5 = MaxPooling1D(pool_size=4)(x5)
+    if opts.bilstm == 1:
+        if opts.regularize == 1:
+            x5 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01)))(
+                x5)
+        else:
+            x5 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True))(x5)
+    else:
+        if opts.regularize == 1:
+            x5 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01))(
+                x5)
+        else:
+            x5 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True)(x5)
+
+
+    attention5 = TimeDistributed(Dense(1, activation='tanh'))(x5)
+    attention5 = Flatten()(attention5)
+    attention5 = Activation('softmax')(attention5)
+    attention5 = RepeatVector(600)(attention5)
+    attention5 = Permute([2, 1])(attention5)
+
+    merge5 = merge([x5, attention5], mode='mul')
+    merge5 = Lambda(lambda xin: K.sum(xin, axis=1))(merge5)
+    merge5 = Dense(300, activation='softmax')(merge5)
+
+    model5 = Model(input=model5_ip, output=merge5)
+    print model5.summary()
+
+else:
+    model5 = Sequential()
+    model5.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
+    if opts.cnn == 1:
+        model5.add(Conv1D(64, 5, padding='valid', activation='relu', strides=1))
+        model5.add(MaxPooling1D(pool_size=4))
+    if opts.bilstm == 1:
+        if opts.regularize == 1:
+            model5.add(Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01))))
+        else:
+            model5.add(Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2)))
+    else:
+        if opts.regularize == 1:
+            model5.add(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01)))
+        else:
+            model5.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
+
+
+# model6
+if opts.attention == 1:
+    model6_ip = Input(shape=(40,))
+    x6 = Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2)(model6_ip)
+    if opts.cnn == 1:
+        x6 = Conv1D(64, 5, padding='valid', activation='relu', strides=1)(x6)
+        x6 = MaxPooling1D(pool_size=4)(x6)
+    if opts.bilstm == 1:
+        if opts.regularize == 1:
+            x6 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01)))(
+                x6)
+        else:
+            x6 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True))(x6)
+    else:
+        if opts.regularize == 1:
+            x6 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01))(
+                x6)
+        else:
+            x6 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True)(x6)
+
+    attention6 = TimeDistributed(Dense(1, activation='tanh'))(x6)
+    attention6 = Flatten()(attention6)
+    attention6 = Activation('softmax')(attention6)
+    attention6 = RepeatVector(600)(attention6)
+    attention6 = Permute([2, 1])(attention6)
+
+    merge6 = merge([x6, attention6], mode='mul')
+    merge6 = Lambda(lambda xin: K.sum(xin, axis=1))(merge6)
+    merge6 = Dense(300, activation='softmax')(merge6)
+
+    model6 = Model(input=model6_ip, output=merge6)
+    print model6.summary()
+
+else:
+    model6 = Sequential()
+    model6.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
+    if opts.cnn == 1:
+        model6.add(Conv1D(64, 5, padding='valid', activation='relu', strides=1))
+        model6.add(MaxPooling1D(pool_size=4))
+    if opts.bilstm == 1:
+        if opts.regularize == 1:
+            model6.add(Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01))))
+        else:
+            model6.add(Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2)))
+    else:
+        if opts.regularize == 1:
+            model6.add(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01)))
+        else:
+            model6.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
+    print model6.summary()
 
 model7 = Sequential()
 model7.add(Embedding(common_words_dim, 10, input_length=1))
 model7.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
 
-model8 = Sequential()
-model8.add(Embedding(len(pos_tags) + 1, 10, input_length=max_len))
-model8.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
+if opts.postags:
+    model8 = Sequential()
+    model8.add(Embedding(len(pos_tags) + 1, 10, input_length=max_len))
+    model8.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
 
-model9 = Sequential()
-model9.add(Embedding(len(pos_tags) + 1, 10, input_length=max_len))
-model9.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
+    model9 = Sequential()
+    model9.add(Embedding(len(pos_tags) + 1, 10, input_length=max_len))
+    model9.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
 
 merged_model = Sequential()
-if baseline:
+if opts.baseline == 1:
     merged_model.add(Merge([model1, model2, model3, model4, model5, model6], mode='concat'))
 else:
-    merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7, model8, model9], mode='concat'))
+    if opts.postags == 1:
+        merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7, model8, model9], mode='concat'))
+    else:
+        merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7], mode='concat'))
+
 merged_model.add(BatchNormalization())
 
 merged_model.add(Dense(300))
@@ -283,9 +396,14 @@ merged_model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['acc
 
 checkpoint = ModelCheckpoint('weights.h5', monitor='val_acc', save_best_only=True, verbose=2)
 
-if baseline:
+if opts.baseline == 1:
     merged_model.fit([x1, x2, x1, x2, x1, x2], y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
                      verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
 else:
-    merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_pos_tags, q2_pos_tags], y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
+    if opts.postags == 1:
+        merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_pos_tags, q2_pos_tags], y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
                      verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
+    else:
+        merged_model.fit([x1, x2, x1, x2, x1, x2, common_words], y=y, batch_size=384,
+                         nb_epoch=NUM_EPOCHS,
+                         verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
