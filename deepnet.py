@@ -458,7 +458,9 @@ else:
         else:
             result = merged_model.fit([x1, x2, x1, x2, x1, x2, common_words], y=y, batch_size=384, nb_epoch=NUM_EPOCHS, verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
 
-print(result.history.keys())
+print get_current_time(), 'Result keys: ', result.history.keys()
+print get_current_time(), 'Training accuracy: ', result.history['acc']
+print get_current_time(), 'Validation accuracy: ', result.history['val_acc']
 #plot Accuracy
 plt.plot(result.history['acc'])
 plt.plot(result.history['val_acc'])
@@ -470,6 +472,8 @@ plt.savefig('accuracy.png')
 plt.clf()
 
 #Plot loss
+print get_current_time(), 'Training loss: ', result.history['loss']
+print get_current_time(), 'Validation loss: ', result.history['val_loss']
 plt.plot(result.history['loss'])
 plt.plot(result.history['val_loss'])
 plt.title('model loss')
