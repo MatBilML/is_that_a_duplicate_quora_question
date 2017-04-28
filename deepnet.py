@@ -461,6 +461,7 @@ else:
 print get_current_time(), 'Result keys: ', result.history.keys()
 print get_current_time(), 'Training accuracy: ', result.history['acc']
 print get_current_time(), 'Validation accuracy: ', result.history['val_acc']
+file_suffix = '_attention_' + opts.attention + '_srl_' + opts.srltags + '_pos_' + opts.postags + '_bilstm_' + opts.bilstm + '_cnn_' + opts.cnn + '_epochs_' + opts.epochs + '_regularize_' + opts.regularize + '.png'
 #plot Accuracy
 plt.plot(result.history['acc'])
 plt.plot(result.history['val_acc'])
@@ -468,7 +469,7 @@ plt.title('model accuracy')
 plt.ylabel('accuracy')
 plt.xlabel('epoch')
 plt.legend(['train', 'validation'], loc='upper left')
-plt.savefig('accuracy.png')
+plt.savefig('accuracy' + file_suffix)
 plt.clf()
 
 #Plot loss
@@ -480,5 +481,5 @@ plt.title('model loss')
 plt.ylabel('loss')
 plt.xlabel('epoch')
 plt.legend(['train', 'validation'], loc='upper left')
-plt.savefig('loss.png')
+plt.savefig('loss' + file_suffix)
 plt.clf()
