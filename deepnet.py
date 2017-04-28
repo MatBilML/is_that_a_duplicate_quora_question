@@ -7,7 +7,7 @@ from keras.layers.embeddings import Embedding
 from keras.layers.recurrent import LSTM, GRU
 from keras.layers.normalization import BatchNormalization
 from keras.utils import np_utils
-from keras.layers import Merge, Flatten,Permute, RepeatVector, merge, Input
+from keras.layers import Merge, Flatten, Permute, RepeatVector, merge, Input
 from keras.layers import TimeDistributed, Lambda
 from keras.layers import Convolution1D, GlobalMaxPooling1D, Conv1D, MaxPooling1D, Bidirectional
 from keras.callbacks import ModelCheckpoint
@@ -24,6 +24,7 @@ from keras.models import Model
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
+from ast import literal_eval
 
 # Helper functions
 
@@ -48,20 +49,29 @@ def get_current_time():
     return datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S') + ' '
 
 
-def get_pos_tag_sequence_padded(questions, max_length):
+def get_pos_tag_sequence_padded(pos_tag_features, max_length):
     q_pos_tags = []
-    for question in questions:
-        try:
-            tokens = nt.word_tokenize(question)
-            tags = nt.pos_tag(tokens)
-            current_posvec = []
-            for index in range(len(tags)):
-                current_posvec.append(get_id(tags[index][1], pos_tags))
-            q_pos_tags.append(current_posvec)
-        except:
-            q_pos_tags.append([0])
+    for pos_tag_feature in pos_tag_features:
+        current_posvec = []
+        pos_tag_feature = literal_eval(pos_tag_feature)
+        for index in range(len(pos_tag_feature)):
+            current_posvec.append(get_id(pos_tag_feature[index][1], pos_tags))
+        q_pos_tags.append(current_posvec)
     q_pos_tags = sequence.pad_sequences(q_pos_tags, maxlen=max_length)
     return q_pos_tags
+
+
+def get_srl_tag_sequence_padded(srl_tag_features, max_length):
+    q_srl_tags = []
+    for srl_tag_feature in srl_tag_features:
+        current_srlvec = []
+        srl_tag_feature = literal_eval(srl_tag_feature)
+        for srl_tag in srl_tag_feature:
+            for key in srl_tag.keys():
+                current_srlvec.append(get_id(key, srl_tags))
+        q_srl_tags.append(current_srlvec)
+    q_srl_tags = sequence.pad_sequences(q_srl_tags, maxlen=max_length)
+    return q_srl_tags
 
 
 def parseOptions():
@@ -84,6 +94,9 @@ def parseOptions():
     optParser.add_option('-p', '--postags', action='store',
                          type='int', dest='postags', default=0,
                          help='Include postags in the model')
+    optParser.add_option('-s', '--srltags', action='store',
+                         type='int', dest='srltags', default=0,
+                         help='Include srltags in the model')
     optParser.add_option('-e', '--epochs', action='store',
                          type='int', dest='epochs', default=2,
                          help='Number of epochs')
@@ -103,9 +116,11 @@ else:
 
 print get_current_time(), 'Starting execution . . .'
 pos_tags = {}
+srl_tags = {}
 
 data = pd.read_csv('data/quora_duplicate_questions.tsv', sep='\t')
 features = pd.read_csv('data/quora_features.csv')
+additional_features = pd.read_csv('data/quora_additional_features.csv')
 
 common_words = features.common_words.values
 common_words_dim = max(common_words) + 1
@@ -128,14 +143,25 @@ print get_current_time(), 'x1.shape: ', x1.shape
 x2 = tk.texts_to_sequences(data.question2.values.astype(str))
 x2 = sequence.pad_sequences(x2, maxlen=max_len)
 
-if opts.postags==1:
+print additional_features.pos_tags1
+if opts.postags == 1:
     print get_current_time(), 'Getting POS tags for q1 set . . .'
-    q1_pos_tags = get_pos_tag_sequence_padded(data.question1, max_len)
+    q1_pos_tags = get_pos_tag_sequence_padded(additional_features.pos_tags1, max_len)
     print get_current_time(), 'q1_pos_tags: ', q1_pos_tags
 
     print get_current_time(), 'Getting POS tags for q2 set . . .'
-    q2_pos_tags = get_pos_tag_sequence_padded(data.question2, max_len)
+    q2_pos_tags = get_pos_tag_sequence_padded(additional_features.pos_tags2.values, max_len)
     print get_current_time(), 'q2_pos_tags: ', q2_pos_tags
+
+srl_max_len = 60
+if opts.srltags == 1:
+    print get_current_time(), 'Getting SRL tags for q1 set . . .'
+    q1_srl_tags = get_srl_tag_sequence_padded(additional_features.srl1.values, srl_max_len)
+    print get_current_time(), 'q1_srl_tags: ', q1_srl_tags
+
+    print get_current_time(), 'Getting SRL tags for q2 set . . .'
+    q2_srl_tags = get_srl_tag_sequence_padded(additional_features.srl2.values, srl_max_len)
+    print get_current_time(), 'q2_srl_tags: ', q2_srl_tags
 
 word_index = tk.word_index
 
@@ -239,7 +265,7 @@ model4.add(Dense(300))
 model4.add(Dropout(0.2))
 model4.add(BatchNormalization())
 
-#model5
+# model5
 if opts.attention == 1:
     model5_ip = Input(shape=(40,))
     x5 = Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2)(model5_ip)
@@ -258,7 +284,6 @@ if opts.attention == 1:
                 x5)
         else:
             x5 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True)(x5)
-
 
     attention5 = TimeDistributed(Dense(1, activation='tanh'))(x5)
     attention5 = Flatten()(attention5)
@@ -355,14 +380,29 @@ if opts.postags:
     model9.add(Embedding(len(pos_tags) + 1, 10, input_length=max_len))
     model9.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
 
+if opts.srltags:
+    model10 = Sequential()
+    model10.add(Embedding(len(srl_tags) + 1, 10, input_length=srl_max_len))
+    model10.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
+
+    model11 = Sequential()
+    model11.add(Embedding(len(srl_tags) + 1, 10, input_length=srl_max_len))
+    model11.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
+
 merged_model = Sequential()
 if opts.baseline == 1:
     merged_model.add(Merge([model1, model2, model3, model4, model5, model6], mode='concat'))
 else:
     if opts.postags == 1:
-        merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7, model8, model9], mode='concat'))
+        if opts.srltags == 1:
+            merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7, model8, model9, model10, model11], mode='concat'))
+        else:
+            merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7, model8, model9], mode='concat'))
     else:
-        merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7], mode='concat'))
+        if opts.srltags == 1:
+            merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7, model10, model11], mode='concat'))
+        else:
+            merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7], mode='concat'))
 
 merged_model.add(BatchNormalization())
 
@@ -404,12 +444,15 @@ if opts.baseline == 1:
                      verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
 else:
     if opts.postags == 1:
-        result = merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_pos_tags, q2_pos_tags], y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
-                     verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
+        if opts.srltags == 1:
+            result = merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_pos_tags, q2_pos_tags, q1_srl_tags, q2_srl_tags], y=y, batch_size=384, nb_epoch=NUM_EPOCHS, verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
+        else:
+            result = merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_pos_tags, q2_pos_tags], y=y, batch_size=384, nb_epoch=NUM_EPOCHS, verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
     else:
-        result = merged_model.fit([x1, x2, x1, x2, x1, x2, common_words], y=y, batch_size=384,
-                         nb_epoch=NUM_EPOCHS,
-                         verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
+        if opts.srltags == 1:
+            result = merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_srl_tags, q2_srl_tags], y=y, batch_size=384, nb_epoch=NUM_EPOCHS, verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
+        else:
+            result = merged_model.fit([x1, x2, x1, x2, x1, x2, common_words], y=y, batch_size=384, nb_epoch=NUM_EPOCHS, verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
 
 print(result.history.keys())
 #plot Accuracy
