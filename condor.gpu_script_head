@@ -1,0 +1,19 @@
+Initialdir = .
+
+Executable = /bin/sh
+
++Group   = "GRAD"
++Project = "INSTRUCTIONAL"
++ProjectDescription = "CS 388 Project - Quora Duplicate Question Detection"
+
+getenv = true
+universe = vanilla
+
+Notification = complete
+Notify_user = pandian@cs.utexas.edu
+
++GPUJob = true && NumJobStarts == 0
+requirements = Cuda8 && TARGET.GPUSlot && CUDAGlobalMemoryMb >= 6144
+request_GPUs = 1
+
+arguments = trigger.sh

@@ -1,0 +1,15 @@
+Initialdir = .
+
+Executable = /bin/sh
+
++Group   = "GRAD"
++Project = "INSTRUCTIONAL"
++ProjectDescription = "CS 388 Project - Quora Duplicate Question Detection"
+
+getenv = true
+universe = vanilla
+
+Notification = complete
+Notify_user = pandian@cs.utexas.edu
+
+arguments = trigger.sh
