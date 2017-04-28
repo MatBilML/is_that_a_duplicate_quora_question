@@ -418,7 +418,7 @@ plt.plot(result.history['val_acc'])
 plt.title('model accuracy')
 plt.ylabel('accuracy')
 plt.xlabel('epoch')
-plt.legend('train', loc='upper left')
+plt.legend(['train', 'validation'], loc='upper left')
 plt.savefig('accuracy.png')
 plt.clf()
 
