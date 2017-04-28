@@ -100,6 +100,9 @@ def parseOptions():
     optParser.add_option('-e', '--epochs', action='store',
                          type='int', dest='epochs', default=2,
                          help='Number of epochs')
+    optParser.add_option('-d', '--data', action='store',
+                         type='string', dest='datadir', default='data',
+                         help='Base data dir')
 
     opts, args = optParser.parse_args()
     return opts
@@ -118,9 +121,10 @@ print get_current_time(), 'Starting execution . . .'
 pos_tags = {}
 srl_tags = {}
 
-data = pd.read_csv('data/quora_duplicate_questions.tsv', sep='\t')
-features = pd.read_csv('data/quora_features.csv')
-additional_features = pd.read_csv('data/quora_additional_features.csv')
+datadir = opts.datadir
+data = pd.read_csv(datadir + '/quora_duplicate_questions.tsv', sep='\t')
+features = pd.read_csv(datadir + '/quora_features.csv')
+additional_features = pd.read_csv(datadir + '/quora_additional_features.csv')
 
 common_words = features.common_words.values
 common_words_dim = max(common_words) + 1
@@ -169,7 +173,7 @@ ytrain_enc = np_utils.to_categorical(y)
 
 print get_current_time(), 'Generating embedding index . . .'
 embeddings_index = {}
-f = open('data/glove.840B.300d.txt')
+f = open(datadir + '/glove.840B.300d.txt')
 for line in tqdm(f):
     values = line.split()
     word = values[0]
