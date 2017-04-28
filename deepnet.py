@@ -21,7 +21,9 @@ import sys
 import optparse
 from keras.regularizers import l1, l2
 from keras.models import Model
-
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 # Helper functions
 
@@ -287,7 +289,7 @@ else:
             model5.add(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01)))
         else:
             model5.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
-
+    print model5.summary()
 
 # model6
 if opts.attention == 1:
@@ -396,14 +398,36 @@ merged_model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['acc
 
 checkpoint = ModelCheckpoint('weights.h5', monitor='val_acc', save_best_only=True, verbose=2)
 
+result = []
 if opts.baseline == 1:
-    merged_model.fit([x1, x2, x1, x2, x1, x2], y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
+    result = merged_model.fit([x1, x2, x1, x2, x1, x2], y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
                      verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
 else:
     if opts.postags == 1:
-        merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_pos_tags, q2_pos_tags], y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
+        result = merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_pos_tags, q2_pos_tags], y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
                      verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
     else:
-        merged_model.fit([x1, x2, x1, x2, x1, x2, common_words], y=y, batch_size=384,
+        result = merged_model.fit([x1, x2, x1, x2, x1, x2, common_words], y=y, batch_size=384,
                          nb_epoch=NUM_EPOCHS,
                          verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
+
+print(result.history.keys())
+#plot Accuracy
+plt.plot(result.history['acc'])
+plt.plot(result.history['val_acc'])
+plt.title('model accuracy')
+plt.ylabel('accuracy')
+plt.xlabel('epoch')
+plt.legend('train', loc='upper left')
+plt.savefig('accuracy.png')
+plt.clf()
+
+#Plot loss
+plt.plot(result.history['loss'])
+plt.plot(result.history['val_loss'])
+plt.title('model loss')
+plt.ylabel('loss')
+plt.xlabel('epoch')
+plt.legend(['train', 'validation'], loc='upper left')
+plt.savefig('loss.png')
+plt.clf()
