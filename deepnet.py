@@ -18,6 +18,7 @@ import nltk as nt
 import time
 import datetime
 import sys
+import os
 import optparse
 from keras.regularizers import l1, l2
 from keras.models import Model
@@ -103,6 +104,9 @@ def parseOptions():
     optParser.add_option('-d', '--data', action='store',
                          type='string', dest='datadir', default='data',
                          help='Base data dir')
+    optParser.add_option('-o', '--output', action='store',
+                         type='string', dest='outputdir', default='.',
+                         help='Base output dir')
 
     opts, args = optParser.parse_args()
     return opts
@@ -110,21 +114,28 @@ def parseOptions():
 
 # Main execution
 opts = parseOptions()
-print opts
+print get_current_time(), 'Command line options: ', opts
 NUM_EPOCHS = opts.epochs
 if opts.baseline == 0:
     print get_current_time(), 'Running latest version.'
 else:
     print get_current_time(), 'Running baseline version.'
 
+output_dir = opts.outputdir
 print get_current_time(), 'Starting execution . . .'
+print get_current_time(), 'Setting output directory to', output_dir
+
+if not os.path.exists(output_dir):
+    os.makedirs(output_dir)
+
 pos_tags = {}
 srl_tags = {}
 
-datadir = opts.datadir
-data = pd.read_csv(datadir + '/quora_duplicate_questions.tsv', sep='\t')
-features = pd.read_csv(datadir + '/quora_features.csv')
-additional_features = pd.read_csv(datadir + '/quora_additional_features.csv')
+data_dir = opts.datadir
+print get_current_time(), 'Setting data directory to', data_dir
+data = pd.read_csv(data_dir + '/quora_duplicate_questions.tsv', sep='\t')
+features = pd.read_csv(data_dir + '/quora_features.csv')
+additional_features = pd.read_csv(data_dir + '/quora_additional_features.csv')
 
 common_words = features.common_words.values
 common_words_dim = max(common_words) + 1
@@ -147,7 +158,7 @@ print get_current_time(), 'x1.shape: ', x1.shape
 x2 = tk.texts_to_sequences(data.question2.values.astype(str))
 x2 = sequence.pad_sequences(x2, maxlen=max_len)
 
-print additional_features.pos_tags1
+# print additional_features.pos_tags1
 if opts.postags == 1:
     print get_current_time(), 'Getting POS tags for q1 set . . .'
     q1_pos_tags = get_pos_tag_sequence_padded(additional_features.pos_tags1, max_len)
@@ -173,7 +184,7 @@ ytrain_enc = np_utils.to_categorical(y)
 
 print get_current_time(), 'Generating embedding index . . .'
 embeddings_index = {}
-f = open(datadir + '/glove.840B.300d.txt')
+f = open(data_dir + '/glove.840B.300d.txt')
 for line in tqdm(f):
     values = line.split()
     word = values[0]
@@ -440,7 +451,7 @@ merged_model.add(Activation('sigmoid'))
 
 merged_model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 
-checkpoint = ModelCheckpoint('weights.h5', monitor='val_acc', save_best_only=True, verbose=2)
+checkpoint = ModelCheckpoint(output_dir + '/weights.h5', monitor='val_acc', save_best_only=True, verbose=2)
 
 result = []
 if opts.baseline == 1:
@@ -469,7 +480,7 @@ plt.title('model accuracy')
 plt.ylabel('accuracy')
 plt.xlabel('epoch')
 plt.legend(['train', 'validation'], loc='upper left')
-plt.savefig('accuracy' + file_suffix)
+plt.savefig(output_dir + '/accuracy' + file_suffix)
 plt.clf()
 
 #Plot loss
@@ -481,5 +492,5 @@ plt.title('model loss')
 plt.ylabel('loss')
 plt.xlabel('epoch')
 plt.legend(['train', 'validation'], loc='upper left')
-plt.savefig('loss' + file_suffix)
+plt.savefig(output_dir + '/loss' + file_suffix)
 plt.clf()
