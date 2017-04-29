@@ -62,6 +62,18 @@ def get_pos_tag_sequence_padded(pos_tag_features, max_length):
     return q_pos_tags
 
 
+def get_chunk_tag_sequence_padded(chunk_features, max_length):
+    q_chunk_tags = []
+    for chunk_feature in chunk_features:
+        current_chunkvec = []
+        chunk_feature = literal_eval(chunk_feature)
+        for index in range(len(chunk_feature)):
+            current_chunkvec.append(get_id(chunk_feature[index][1], chunk_tags))
+        q_chunk_tags.append(current_chunkvec)
+    q_chunk_tags = sequence.pad_sequences(q_chunk_tags, maxlen=max_length)
+    return q_chunk_tags
+
+
 def get_srl_tag_sequence_padded(srl_tag_features, max_length):
     q_srl_tags = []
     for srl_tag_feature in srl_tag_features:
@@ -107,6 +119,12 @@ def parseOptions():
     optParser.add_option('-o', '--output', action='store',
                          type='string', dest='outputdir', default='.',
                          help='Base output dir')
+    optParser.add_option('-u', '--chunk', action='store',
+                         type='int', dest='chunk', default='0',
+                         help='Include chunk tags in the model')
+    optParser.add_option('-v', '--verbs', action='store',
+                         type='int', dest='verbs', default='0',
+                         help='Include verbs in the model')
 
     opts, args = optParser.parse_args()
     return opts
@@ -130,6 +148,7 @@ if not os.path.exists(output_dir):
 
 pos_tags = {}
 srl_tags = {}
+chunk_tags = {}
 
 data_dir = opts.datadir
 print get_current_time(), 'Setting data directory to', data_dir
@@ -178,6 +197,15 @@ if opts.srltags == 1:
     q2_srl_tags = get_srl_tag_sequence_padded(additional_features.srl2.values, srl_max_len)
     print get_current_time(), 'q2_srl_tags: ', q2_srl_tags
 
+if opts.chunk == 1:
+    print get_current_time(), 'Getting chunk tags for q1 set . . .'
+    q1_chunk_tags = get_chunk_tag_sequence_padded(additional_features.chunk1, max_len)
+    print get_current_time(), 'q1_chunk_tags: ', q1_chunk_tags
+
+    print get_current_time(), 'Getting chunk tags for q2 set . . .'
+    q2_chunk_tags = get_chunk_tag_sequence_padded(additional_features.chunk2, max_len)
+    print get_current_time(), 'q2_chunk_tags: ', q2_chunk_tags
+
 word_index = tk.word_index
 
 ytrain_enc = np_utils.to_categorical(y)
@@ -208,6 +236,9 @@ pool_length = 4
 
 print(get_current_time() + 'Building model...')
 
+models = []
+model_inputs = []
+
 model1 = Sequential()
 model1.add(Embedding(len(word_index) + 1,
                      300,
@@ -217,6 +248,8 @@ model1.add(Embedding(len(word_index) + 1,
 
 model1.add(TimeDistributed(Dense(300, activation='relu')))
 model1.add(Lambda(lambda x: K.sum(x, axis=1), output_shape=(300,)))
+models.append(model1)
+model_inputs.append(x1)
 
 model2 = Sequential()
 model2.add(Embedding(len(word_index) + 1,
@@ -227,6 +260,8 @@ model2.add(Embedding(len(word_index) + 1,
 
 model2.add(TimeDistributed(Dense(300, activation='relu')))
 model2.add(Lambda(lambda x: K.sum(x, axis=1), output_shape=(300,)))
+models.append(model2)
+model_inputs.append(x2)
 
 model3 = Sequential()
 model3.add(Embedding(len(word_index) + 1,
@@ -253,6 +288,8 @@ model3.add(Dropout(0.2))
 model3.add(Dense(300))
 model3.add(Dropout(0.2))
 model3.add(BatchNormalization())
+models.append(model3)
+model_inputs.append(x1)
 
 model4 = Sequential()
 model4.add(Embedding(len(word_index) + 1,
@@ -279,6 +316,8 @@ model4.add(Dropout(0.2))
 model4.add(Dense(300))
 model4.add(Dropout(0.2))
 model4.add(BatchNormalization())
+models.append(model4)
+model_inputs.append(x2)
 
 # model5
 if opts.attention == 1:
@@ -312,7 +351,6 @@ if opts.attention == 1:
 
     model5 = Model(input=model5_ip, output=merge5)
     print model5.summary()
-
 else:
     model5 = Sequential()
     model5.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
@@ -330,6 +368,8 @@ else:
         else:
             model5.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
     print model5.summary()
+models.append(model5)
+model_inputs.append(x1)
 
 # model6
 if opts.attention == 1:
@@ -363,7 +403,6 @@ if opts.attention == 1:
 
     model6 = Model(input=model6_ip, output=merge6)
     print model6.summary()
-
 else:
     model6 = Sequential()
     model6.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
@@ -381,12 +420,16 @@ else:
         else:
             model6.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
     print model6.summary()
+models.append(model6)
+model_inputs.append(x2)
 
 model7 = Sequential()
 model7.add(Embedding(common_words_dim, 10, input_length=1))
 model7.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
+models.append(model7)
+model_inputs.append(common_words)
 
-if opts.postags:
+if opts.postags == 1:
     model8 = Sequential()
     model8.add(Embedding(len(pos_tags) + 1, 10, input_length=max_len))
     model8.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
@@ -395,7 +438,13 @@ if opts.postags:
     model9.add(Embedding(len(pos_tags) + 1, 10, input_length=max_len))
     model9.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
 
-if opts.srltags:
+    models.append(model8)
+    models.append(model9)
+
+    model_inputs.append(q1_pos_tags)
+    model_inputs.append(q2_pos_tags)
+
+if opts.srltags == 1:
     model10 = Sequential()
     model10.add(Embedding(len(srl_tags) + 1, 10, input_length=srl_max_len))
     model10.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
@@ -404,20 +453,33 @@ if opts.srltags:
     model11.add(Embedding(len(srl_tags) + 1, 10, input_length=srl_max_len))
     model11.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
 
+    models.append(model10)
+    models.append(model11)
+
+    model_inputs.append(q1_srl_tags)
+    model_inputs.append(q2_srl_tags)
+
+if opts.chunk == 1:
+    model12 = Sequential()
+    model12.add(Embedding(len(chunk_tags) + 1, 10, input_length=max_len))
+    model12.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
+
+    model13 = Sequential()
+    model13.add(Embedding(len(chunk_tags) + 1, 10, input_length=max_len))
+    model13.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
+
+    models.append(model12)
+    models.append(model13)
+
+    model_inputs.append(q1_chunk_tags)
+    model_inputs.append(q2_chunk_tags)
+
+
 merged_model = Sequential()
 if opts.baseline == 1:
     merged_model.add(Merge([model1, model2, model3, model4, model5, model6], mode='concat'))
 else:
-    if opts.postags == 1:
-        if opts.srltags == 1:
-            merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7, model8, model9, model10, model11], mode='concat'))
-        else:
-            merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7, model8, model9], mode='concat'))
-    else:
-        if opts.srltags == 1:
-            merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7, model10, model11], mode='concat'))
-        else:
-            merged_model.add(Merge([model1, model2, model3, model4, model5, model6, model7], mode='concat'))
+    merged_model.add(Merge(models, mode='concat'))
 
 merged_model.add(BatchNormalization())
 
@@ -458,21 +520,16 @@ if opts.baseline == 1:
     result = merged_model.fit([x1, x2, x1, x2, x1, x2], y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
                      verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
 else:
-    if opts.postags == 1:
-        if opts.srltags == 1:
-            result = merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_pos_tags, q2_pos_tags, q1_srl_tags, q2_srl_tags], y=y, batch_size=384, nb_epoch=NUM_EPOCHS, verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
-        else:
-            result = merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_pos_tags, q2_pos_tags], y=y, batch_size=384, nb_epoch=NUM_EPOCHS, verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
-    else:
-        if opts.srltags == 1:
-            result = merged_model.fit([x1, x2, x1, x2, x1, x2, common_words, q1_srl_tags, q2_srl_tags], y=y, batch_size=384, nb_epoch=NUM_EPOCHS, verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
-        else:
-            result = merged_model.fit([x1, x2, x1, x2, x1, x2, common_words], y=y, batch_size=384, nb_epoch=NUM_EPOCHS, verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
+    result = merged_model.fit(model_inputs, y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
+                              verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
 
 print get_current_time(), 'Result keys: ', result.history.keys()
 print get_current_time(), 'Training accuracy: ', result.history['acc']
 print get_current_time(), 'Validation accuracy: ', result.history['val_acc']
-file_suffix = '_attention_' + opts.attention + '_srl_' + opts.srltags + '_pos_' + opts.postags + '_bilstm_' + opts.bilstm + '_cnn_' + opts.cnn + '_epochs_' + opts.epochs + '_regularize_' + opts.regularize + '.png'
+file_suffix = '_attention_' + str(opts.attention) + '_srl_' + str(opts.srltags) + '_pos_' + str(opts.postags) + '_bilstm_' \
+              + str(opts.bilstm) + '_cnn_' + str(opts.cnn) + '_epochs_' + str(opts.epochs) + '_regularize_' + str(opts.regularize) \
+              + '_chunk_' + str(opts.chunk) + '.png'
+
 #plot Accuracy
 plt.plot(result.history['acc'])
 plt.plot(result.history['val_acc'])
