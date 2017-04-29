@@ -125,6 +125,9 @@ def parseOptions():
     optParser.add_option('-v', '--verbs', action='store',
                          type='int', dest='verbs', default='0',
                          help='Include verbs in the model')
+    optParser.add_option('-w', '--commonwords', action='store',
+                         type='int', dest='commonwords', default='0',
+                         help='Include common words in the model')
 
     opts, args = optParser.parse_args()
     return opts
@@ -423,11 +426,12 @@ else:
 models.append(model6)
 model_inputs.append(x2)
 
-model7 = Sequential()
-model7.add(Embedding(common_words_dim, 10, input_length=1))
-model7.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
-models.append(model7)
-model_inputs.append(common_words)
+if opts.commonwords == 1:
+    model7 = Sequential()
+    model7.add(Embedding(common_words_dim, 10, input_length=1))
+    model7.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
+    models.append(model7)
+    model_inputs.append(common_words)
 
 if opts.postags == 1:
     model8 = Sequential()
