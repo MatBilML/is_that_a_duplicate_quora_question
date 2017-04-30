@@ -26,6 +26,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from ast import literal_eval
+import math
 
 # Helper functions
 
@@ -73,6 +74,13 @@ def get_chunk_tag_sequence_padded(chunk_features, max_length):
     q_chunk_tags = sequence.pad_sequences(q_chunk_tags, maxlen=max_length)
     return q_chunk_tags
 
+def euclidean_distance(vects):
+    x, y = vects
+    return K.sqrt(K.sum(K.square(x - y), axis=1, keepdims=True))
+
+def eucl_dist_output_shape(shapes):
+    shape1, shape2 = shapes
+    return (shape1[0], 1)
 
 def get_srl_tag_sequence_padded(srl_tag_features, max_length):
     q_srl_tags = []
@@ -128,6 +136,9 @@ def parseOptions():
     optParser.add_option('-w', '--commonwords', action='store',
                          type='int', dest='commonwords', default='0',
                          help='Include common words in the model')
+    optParser.add_option('-m', '--siamese', action='store',
+                         type='int', dest='siamese', default='1',
+                         help='Siamese architecture')
 
     opts, args = optParser.parse_args()
     return opts
@@ -159,27 +170,42 @@ data = pd.read_csv(data_dir + '/quora_duplicate_questions.tsv', sep='\t')
 features = pd.read_csv(data_dir + '/quora_features.csv')
 additional_features = pd.read_csv(data_dir + '/quora_additional_features.csv')
 
+lendata = len(data)
+lentraindata = (int)(math.floor(lendata*0.9))
+lentestdata = (int)(lendata-lentraindata)
+
+traindata = data[0:lentraindata]
+testdata = data[lentraindata+1:]
+
+features = features[0:lentraindata]
+additional_features = additional_features[0:lentraindata]
+
 common_words = features.common_words.values
 common_words_dim = max(common_words) + 1
 
 print get_current_time(), 'type(common_words): ', type(common_words)
 print get_current_time(), 'common_words.shape: ', common_words.shape
 
-y = data.is_duplicate.values
+trainy = traindata.is_duplicate.values
+testy = testdata.is_duplicate.values
 
 tk = text.Tokenizer(nb_words=200000)
 
 max_len = 40
 tk.fit_on_texts(list(data.question1.values) + list(data.question2.values.astype(str)))
-x1 = tk.texts_to_sequences(data.question1.values)
+x1 = tk.texts_to_sequences(traindata.question1.values)
 x1 = sequence.pad_sequences(x1, maxlen=max_len)
 
 print get_current_time(), 'type(x1): ', type(x1)
 print get_current_time(), 'x1.shape: ', x1.shape
 
-x2 = tk.texts_to_sequences(data.question2.values.astype(str))
+x2 = tk.texts_to_sequences(traindata.question2.values.astype(str))
 x2 = sequence.pad_sequences(x2, maxlen=max_len)
 
+x1test = tk.texts_to_sequences(testdata.question1.values)
+x1test = sequence.pad_sequences(x1test, maxlen=max_len)
+x2test = tk.texts_to_sequences(testdata.question2.values.astype(str))
+x2test = sequence.pad_sequences(x2test, maxlen=max_len)
 # print additional_features.pos_tags1
 if opts.postags == 1:
     print get_current_time(), 'Getting POS tags for q1 set . . .'
@@ -211,7 +237,7 @@ if opts.chunk == 1:
 
 word_index = tk.word_index
 
-ytrain_enc = np_utils.to_categorical(y)
+ytrain_enc = np_utils.to_categorical(trainy)
 
 print get_current_time(), 'Generating embedding index . . .'
 embeddings_index = {}
@@ -323,37 +349,109 @@ models.append(model4)
 model_inputs.append(x2)
 
 # model5
-if opts.attention == 1:
-    model5_ip = Input(shape=(40,))
-    x5 = Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2)(model5_ip)
-    if opts.cnn == 1:
-        x5 = Conv1D(64, 5, padding='valid', activation='relu', strides=1)(x5)
-        x5 = MaxPooling1D(pool_size=4)(x5)
-    if opts.bilstm == 1:
-        if opts.regularize == 1:
-            x5 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01)))(
-                x5)
+if opts.siamese == 0:
+    if opts.attention == 1:
+        model5_ip = Input(shape=(40,))
+        x5 = Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2)(model5_ip)
+        if opts.cnn == 1:
+            x5 = Conv1D(64, 5, padding='valid', activation='relu', strides=1)(x5)
+            x5 = MaxPooling1D(pool_size=4)(x5)
+        if opts.bilstm == 1:
+            if opts.regularize == 1:
+                x5 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01)))(
+                    x5)
+            else:
+                x5 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True))(x5)
         else:
-            x5 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True))(x5)
+            if opts.regularize == 1:
+                x5 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01))(
+                    x5)
+            else:
+                x5 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True)(x5)
+
+        attention5 = TimeDistributed(Dense(1, activation='tanh'))(x5)
+        attention5 = Flatten()(attention5)
+        attention5 = Activation('softmax')(attention5)
+        attention5 = RepeatVector(600)(attention5)
+        attention5 = Permute([2, 1])(attention5)
+
+        merge5 = merge([x5, attention5], mode='mul')
+        merge5 = Lambda(lambda xin: K.sum(xin, axis=1))(merge5)
+        merge5 = Dense(300, activation='softmax')(merge5)
+
+        model5 = Model(input=model5_ip, output=merge5)
+        print model5.summary()
     else:
-        if opts.regularize == 1:
-            x5 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01))(
-                x5)
+        model5 = Sequential()
+        model5.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
+        if opts.cnn == 1:
+            model5.add(Conv1D(64, 5, padding='valid', activation='relu', strides=1))
+            model5.add(MaxPooling1D(pool_size=4))
+        if opts.bilstm == 1:
+            if opts.regularize == 1:
+                model5.add(Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01))))
+            else:
+                model5.add(Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2)))
         else:
-            x5 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True)(x5)
+            if opts.regularize == 1:
+                model5.add(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01)))
+            else:
+                model5.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
+        print model5.summary()
+    models.append(model5)
+    model_inputs.append(x1)
 
-    attention5 = TimeDistributed(Dense(1, activation='tanh'))(x5)
-    attention5 = Flatten()(attention5)
-    attention5 = Activation('softmax')(attention5)
-    attention5 = RepeatVector(600)(attention5)
-    attention5 = Permute([2, 1])(attention5)
+    # model6
+    if opts.attention == 1:
+        model6_ip = Input(shape=(40,))
+        x6 = Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2)(model6_ip)
+        if opts.cnn == 1:
+            x6 = Conv1D(64, 5, padding='valid', activation='relu', strides=1)(x6)
+            x6 = MaxPooling1D(pool_size=4)(x6)
+        if opts.bilstm == 1:
+            if opts.regularize == 1:
+                x6 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01)))(
+                    x6)
+            else:
+                x6 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True))(x6)
+        else:
+            if opts.regularize == 1:
+                x6 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01))(
+                    x6)
+            else:
+                x6 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True)(x6)
 
-    merge5 = merge([x5, attention5], mode='mul')
-    merge5 = Lambda(lambda xin: K.sum(xin, axis=1))(merge5)
-    merge5 = Dense(300, activation='softmax')(merge5)
+        attention6 = TimeDistributed(Dense(1, activation='tanh'))(x6)
+        attention6 = Flatten()(attention6)
+        attention6 = Activation('softmax')(attention6)
+        attention6 = RepeatVector(600)(attention6)
+        attention6 = Permute([2, 1])(attention6)
 
-    model5 = Model(input=model5_ip, output=merge5)
-    print model5.summary()
+        merge6 = merge([x6, attention6], mode='mul')
+        merge6 = Lambda(lambda xin: K.sum(xin, axis=1))(merge6)
+        merge6 = Dense(300, activation='softmax')(merge6)
+
+        model6 = Model(input=model6_ip, output=merge6)
+        print model6.summary()
+    else:
+        model6 = Sequential()
+        model6.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
+        if opts.cnn == 1:
+            model6.add(Conv1D(64, 5, padding='valid', activation='relu', strides=1))
+            model6.add(MaxPooling1D(pool_size=4))
+        if opts.bilstm == 1:
+            if opts.regularize == 1:
+                model6.add(Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01))))
+            else:
+                model6.add(Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2)))
+        else:
+            if opts.regularize == 1:
+                model6.add(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01)))
+            else:
+                model6.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
+        print model6.summary()
+    models.append(model6)
+    model_inputs.append(x2)
 else:
     model5 = Sequential()
     model5.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
@@ -370,61 +468,18 @@ else:
             model5.add(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01)))
         else:
             model5.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
-    print model5.summary()
-models.append(model5)
-model_inputs.append(x1)
 
-# model6
-if opts.attention == 1:
-    model6_ip = Input(shape=(40,))
-    x6 = Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2)(model6_ip)
-    if opts.cnn == 1:
-        x6 = Conv1D(64, 5, padding='valid', activation='relu', strides=1)(x6)
-        x6 = MaxPooling1D(pool_size=4)(x6)
-    if opts.bilstm == 1:
-        if opts.regularize == 1:
-            x6 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01)))(
-                x6)
-        else:
-            x6 = Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True))(x6)
-    else:
-        if opts.regularize == 1:
-            x6 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True, W_regularizer=l2(0.01))(
-                x6)
-        else:
-            x6 = LSTM(300, dropout_W=0.2, dropout_U=0.2, return_sequences=True)(x6)
+    input_a = Input(shape=(40,))
+    input_b = Input(shape=(40,))
 
-    attention6 = TimeDistributed(Dense(1, activation='tanh'))(x6)
-    attention6 = Flatten()(attention6)
-    attention6 = Activation('softmax')(attention6)
-    attention6 = RepeatVector(600)(attention6)
-    attention6 = Permute([2, 1])(attention6)
+    processed_a = model5(input_a)
+    processed_b = model5(input_b)
 
-    merge6 = merge([x6, attention6], mode='mul')
-    merge6 = Lambda(lambda xin: K.sum(xin, axis=1))(merge6)
-    merge6 = Dense(300, activation='softmax')(merge6)
-
-    model6 = Model(input=model6_ip, output=merge6)
-    print model6.summary()
-else:
-    model6 = Sequential()
-    model6.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
-    if opts.cnn == 1:
-        model6.add(Conv1D(64, 5, padding='valid', activation='relu', strides=1))
-        model6.add(MaxPooling1D(pool_size=4))
-    if opts.bilstm == 1:
-        if opts.regularize == 1:
-            model6.add(Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01))))
-        else:
-            model6.add(Bidirectional(LSTM(300, dropout_W=0.2, dropout_U=0.2)))
-    else:
-        if opts.regularize == 1:
-            model6.add(LSTM(300, dropout_W=0.2, dropout_U=0.2, W_regularizer=l2(0.01)))
-        else:
-            model6.add(LSTM(300, dropout_W=0.2, dropout_U=0.2))
-    print model6.summary()
-models.append(model6)
-model_inputs.append(x2)
+    distance = Lambda(euclidean_distance, output_shape=eucl_dist_output_shape)([processed_a, processed_b])
+    model5s = Model(input=[input_a, input_b], output=distance)
+    models.append(model5s)
+    model_inputs.append(x1)
+    model_inputs.append(x2)
 
 if opts.commonwords == 1:
     model7 = Sequential()
@@ -521,10 +576,10 @@ checkpoint = ModelCheckpoint(output_dir + '/weights.h5', monitor='val_acc', save
 
 result = []
 if opts.baseline == 1:
-    result = merged_model.fit([x1, x2, x1, x2, x1, x2], y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
+    result = merged_model.fit([x1, x2, x1, x2, x1, x2], y=trainy, batch_size=384, nb_epoch=NUM_EPOCHS,
                      verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
 else:
-    result = merged_model.fit(model_inputs, y=y, batch_size=384, nb_epoch=NUM_EPOCHS,
+    result = merged_model.fit(model_inputs, y=trainy, batch_size=384, nb_epoch=NUM_EPOCHS,
                               verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
 
 print get_current_time(), 'Result keys: ', result.history.keys()
@@ -533,6 +588,7 @@ print get_current_time(), 'Validation accuracy: ', result.history['val_acc']
 file_suffix = '_attention_' + str(opts.attention) + '_srl_' + str(opts.srltags) + '_pos_' + str(opts.postags) + '_bilstm_' \
               + str(opts.bilstm) + '_cnn_' + str(opts.cnn) + '_epochs_' + str(opts.epochs) + '_regularize_' + str(opts.regularize) \
               + '_chunk_' + str(opts.chunk) + '.png'
+
 
 #plot Accuracy
 plt.plot(result.history['acc'])
@@ -555,3 +611,7 @@ plt.xlabel('epoch')
 plt.legend(['train', 'validation'], loc='upper left')
 plt.savefig(output_dir + '/loss' + file_suffix)
 plt.clf()
+
+score, acc = merged_model.evaluate([x1test, x2test,x1test, x2test,x1test, x2test], testy, batch_size=384)
+print('Test score:', score)
+print('Test accuracy:', acc)
