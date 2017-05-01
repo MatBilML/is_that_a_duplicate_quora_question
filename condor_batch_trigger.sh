@@ -25,8 +25,5 @@ for i in `cat $to_trigger_file`; do
         echo '' >> $trigger_file
         echo $cmd >> $trigger_file
 
-        #echo ---------------------------------
-        #cat trigger.sh
-        # sleep 120
-#       ./process_condor.sh run"$run" $pu $trigger_file
+       ./process_condor.sh run"$run" $pu $trigger_file
 done
