@@ -139,12 +139,16 @@ def parseOptions():
     optParser.add_option('-m', '--siamese', action='store',
                          type='int', dest='siamese', default='1',
                          help='Siamese architecture')
+    optParser.add_option('-k', '--cwnolstm', action='store',
+                         type='int', dest='cwnolstm', default='0',
+                         help='Not use LSTM for Common words')
 
     opts, args = optParser.parse_args()
     return opts
 
 
 # Main execution
+
 opts = parseOptions()
 print get_current_time(), 'Command line options: ', opts
 NUM_EPOCHS = opts.epochs
@@ -166,78 +170,95 @@ chunk_tags = {}
 
 data_dir = opts.datadir
 print get_current_time(), 'Setting data directory to', data_dir
+
 data = pd.read_csv(data_dir + '/quora_duplicate_questions.tsv', sep='\t')
 features = pd.read_csv(data_dir + '/quora_features.csv')
 additional_features = pd.read_csv(data_dir + '/quora_additional_features.csv')
 
-lendata = len(data)
-lentraindata = (int)(math.floor(lendata*0.9))
-lentestdata = (int)(lendata-lentraindata)
+data_len = len(data)
+train_data_len = (int)(math.floor(data_len * 0.9))
+test_data_len = (int)(data_len - train_data_len)
 
-traindata = data[0:lentraindata]
-testdata = data[lentraindata+1:]
+train_data = data[0:train_data_len]
+test_data = data[train_data_len + 1:]
 
-features = features[0:lentraindata]
-additional_features = additional_features[0:lentraindata]
+features_train = features[0:train_data_len]
+additional_features_train = additional_features[0:train_data_len]
 
-common_words = features.common_words.values
-common_words_dim = max(common_words) + 1
+features_test = features[train_data_len + 1:]
+additional_features_test = additional_features[train_data_len + 1:]
 
-print get_current_time(), 'type(common_words): ', type(common_words)
-print get_current_time(), 'common_words.shape: ', common_words.shape
+common_words_train = features_train.common_words.values
+common_words_test = features_test.common_words.values
+common_words_dim = max(max(common_words_train), max(common_words_test)) + 1
 
-trainy = traindata.is_duplicate.values
-testy = testdata.is_duplicate.values
+print get_current_time(), 'type(common_words): ', type(common_words_train)
+print get_current_time(), 'common_words.shape: ', common_words_train.shape
+
+train_y = train_data.is_duplicate.values
+test_y = test_data.is_duplicate.values
 
 tk = text.Tokenizer(nb_words=200000)
 
 max_len = 40
 tk.fit_on_texts(list(data.question1.values) + list(data.question2.values.astype(str)))
-x1 = tk.texts_to_sequences(traindata.question1.values)
+x1 = tk.texts_to_sequences(train_data.question1.values)
 x1 = sequence.pad_sequences(x1, maxlen=max_len)
 
 print get_current_time(), 'type(x1): ', type(x1)
 print get_current_time(), 'x1.shape: ', x1.shape
 
-x2 = tk.texts_to_sequences(traindata.question2.values.astype(str))
+x2 = tk.texts_to_sequences(train_data.question2.values.astype(str))
 x2 = sequence.pad_sequences(x2, maxlen=max_len)
 
-x1test = tk.texts_to_sequences(testdata.question1.values)
-x1test = sequence.pad_sequences(x1test, maxlen=max_len)
-x2test = tk.texts_to_sequences(testdata.question2.values.astype(str))
-x2test = sequence.pad_sequences(x2test, maxlen=max_len)
-# print additional_features.pos_tags1
+x1_test = tk.texts_to_sequences(test_data.question1.values)
+x1_test = sequence.pad_sequences(x1_test, maxlen=max_len)
+x2_test = tk.texts_to_sequences(test_data.question2.values.astype(str))
+x2_test = sequence.pad_sequences(x2_test, maxlen=max_len)
+
 if opts.postags == 1:
     print get_current_time(), 'Getting POS tags for q1 set . . .'
-    q1_pos_tags = get_pos_tag_sequence_padded(additional_features.pos_tags1, max_len)
+    q1_pos_tags = get_pos_tag_sequence_padded(additional_features_train.pos_tags1, max_len)
+    q1_pos_tags_test = get_pos_tag_sequence_padded(additional_features_test.pos_tags1, max_len)
     print get_current_time(), 'q1_pos_tags: ', q1_pos_tags
+    print get_current_time(), 'q1_pos_tags_test: ', q1_pos_tags_test
 
     print get_current_time(), 'Getting POS tags for q2 set . . .'
-    q2_pos_tags = get_pos_tag_sequence_padded(additional_features.pos_tags2.values, max_len)
+    q2_pos_tags = get_pos_tag_sequence_padded(additional_features_train.pos_tags2.values, max_len)
+    q2_pos_tags_test = get_pos_tag_sequence_padded(additional_features_test.pos_tags2.values, max_len)
     print get_current_time(), 'q2_pos_tags: ', q2_pos_tags
+    print get_current_time(), 'q2_pos_tags_test: ', q2_pos_tags_test
 
 srl_max_len = 60
 if opts.srltags == 1:
     print get_current_time(), 'Getting SRL tags for q1 set . . .'
-    q1_srl_tags = get_srl_tag_sequence_padded(additional_features.srl1.values, srl_max_len)
+    q1_srl_tags = get_srl_tag_sequence_padded(additional_features_train.srl1.values, srl_max_len)
+    q1_srl_tags_test = get_srl_tag_sequence_padded(additional_features_test.srl1.values, srl_max_len)
     print get_current_time(), 'q1_srl_tags: ', q1_srl_tags
+    print get_current_time(), 'q1_srl_tags_test: ', q1_srl_tags_test
 
     print get_current_time(), 'Getting SRL tags for q2 set . . .'
-    q2_srl_tags = get_srl_tag_sequence_padded(additional_features.srl2.values, srl_max_len)
+    q2_srl_tags = get_srl_tag_sequence_padded(additional_features_train.srl2.values, srl_max_len)
+    q2_srl_tags_test = get_srl_tag_sequence_padded(additional_features_test.srl2.values, srl_max_len)
     print get_current_time(), 'q2_srl_tags: ', q2_srl_tags
+    print get_current_time(), 'q2_srl_tags_test: ', q2_srl_tags_test
 
 if opts.chunk == 1:
     print get_current_time(), 'Getting chunk tags for q1 set . . .'
-    q1_chunk_tags = get_chunk_tag_sequence_padded(additional_features.chunk1, max_len)
+    q1_chunk_tags = get_chunk_tag_sequence_padded(additional_features_train.chunk1, max_len)
+    q1_chunk_tags_test = get_chunk_tag_sequence_padded(additional_features_test.chunk1, max_len)
     print get_current_time(), 'q1_chunk_tags: ', q1_chunk_tags
+    print get_current_time(), 'q1_chunk_tags_test: ', q1_chunk_tags_test
 
     print get_current_time(), 'Getting chunk tags for q2 set . . .'
-    q2_chunk_tags = get_chunk_tag_sequence_padded(additional_features.chunk2, max_len)
+    q2_chunk_tags = get_chunk_tag_sequence_padded(additional_features_train.chunk2, max_len)
+    q2_chunk_tags_test = get_chunk_tag_sequence_padded(additional_features_test.chunk2, max_len)
     print get_current_time(), 'q2_chunk_tags: ', q2_chunk_tags
+    print get_current_time(), 'q2_chunk_tags_test: ', q2_chunk_tags_test
 
 word_index = tk.word_index
 
-ytrain_enc = np_utils.to_categorical(trainy)
+y_train_enc = np_utils.to_categorical(train_y)
 
 print get_current_time(), 'Generating embedding index . . .'
 embeddings_index = {}
@@ -267,6 +288,7 @@ print(get_current_time() + 'Building model...')
 
 models = []
 model_inputs = []
+model_inputs_test = []
 
 model1 = Sequential()
 model1.add(Embedding(len(word_index) + 1,
@@ -279,6 +301,7 @@ model1.add(TimeDistributed(Dense(300, activation='relu')))
 model1.add(Lambda(lambda x: K.sum(x, axis=1), output_shape=(300,)))
 models.append(model1)
 model_inputs.append(x1)
+model_inputs_test.append(x1_test)
 
 model2 = Sequential()
 model2.add(Embedding(len(word_index) + 1,
@@ -291,6 +314,7 @@ model2.add(TimeDistributed(Dense(300, activation='relu')))
 model2.add(Lambda(lambda x: K.sum(x, axis=1), output_shape=(300,)))
 models.append(model2)
 model_inputs.append(x2)
+model_inputs_test.append(x2_test)
 
 model3 = Sequential()
 model3.add(Embedding(len(word_index) + 1,
@@ -319,6 +343,7 @@ model3.add(Dropout(0.2))
 model3.add(BatchNormalization())
 models.append(model3)
 model_inputs.append(x1)
+model_inputs_test.append(x1_test)
 
 model4 = Sequential()
 model4.add(Embedding(len(word_index) + 1,
@@ -347,6 +372,7 @@ model4.add(Dropout(0.2))
 model4.add(BatchNormalization())
 models.append(model4)
 model_inputs.append(x2)
+model_inputs_test.append(x2_test)
 
 # model5
 if opts.siamese == 0:
@@ -400,6 +426,7 @@ if opts.siamese == 0:
         print model5.summary()
     models.append(model5)
     model_inputs.append(x1)
+    model_inputs_test.append(x1_test)
 
     # model6
     if opts.attention == 1:
@@ -452,6 +479,7 @@ if opts.siamese == 0:
         print model6.summary()
     models.append(model6)
     model_inputs.append(x2)
+    model_inputs_test.append(x2_test)
 else:
     model5 = Sequential()
     model5.add(Embedding(len(word_index) + 1, 300, input_length=40, dropout=0.2))
@@ -481,12 +509,20 @@ else:
     model_inputs.append(x1)
     model_inputs.append(x2)
 
+    model_inputs_test.append(x1_test)
+    model_inputs_test.append(x2_test)
+
 if opts.commonwords == 1:
     model7 = Sequential()
-    model7.add(Embedding(common_words_dim, 10, input_length=1))
-    model7.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
+    if opts.cwnolstm == 1:
+        model7.add(Embedding(common_words_dim, 300, input_length=1))
+        model7.add(Lambda(lambda x: K.sum(x, axis=1), output_shape=(300,)))
+    else:
+        model7.add(Embedding(common_words_dim, 10, input_length=1))
+        model7.add(LSTM(10, dropout_W=0.2, dropout_U=0.2))
     models.append(model7)
-    model_inputs.append(common_words)
+    model_inputs.append(common_words_train)
+    model_inputs_test.append(common_words_test)
 
 if opts.postags == 1:
     model8 = Sequential()
@@ -503,6 +539,9 @@ if opts.postags == 1:
     model_inputs.append(q1_pos_tags)
     model_inputs.append(q2_pos_tags)
 
+    model_inputs_test.append(q1_pos_tags_test)
+    model_inputs_test.append(q2_pos_tags_test)
+
 if opts.srltags == 1:
     model10 = Sequential()
     model10.add(Embedding(len(srl_tags) + 1, 10, input_length=srl_max_len))
@@ -517,6 +556,9 @@ if opts.srltags == 1:
 
     model_inputs.append(q1_srl_tags)
     model_inputs.append(q2_srl_tags)
+
+    model_inputs_test.append(q1_srl_tags_test)
+    model_inputs_test.append(q2_srl_tags_test)
 
 if opts.chunk == 1:
     model12 = Sequential()
@@ -533,6 +575,8 @@ if opts.chunk == 1:
     model_inputs.append(q1_chunk_tags)
     model_inputs.append(q2_chunk_tags)
 
+    model_inputs_test.append(q1_chunk_tags_test)
+    model_inputs_test.append(q2_chunk_tags_test)
 
 merged_model = Sequential()
 if opts.baseline == 1:
@@ -576,16 +620,16 @@ checkpoint = ModelCheckpoint(output_dir + '/weights.h5', monitor='val_acc', save
 
 result = []
 if opts.baseline == 1:
-    result = merged_model.fit([x1, x2, x1, x2, x1, x2], y=trainy, batch_size=384, nb_epoch=NUM_EPOCHS,
-                     verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
+    result = merged_model.fit([x1, x2, x1, x2, x1, x2], y=train_y, batch_size=384, nb_epoch=NUM_EPOCHS,
+                              verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
 else:
-    result = merged_model.fit(model_inputs, y=trainy, batch_size=384, nb_epoch=NUM_EPOCHS,
+    result = merged_model.fit(model_inputs, y=train_y, batch_size=384, nb_epoch=NUM_EPOCHS,
                               verbose=1, validation_split=0.1, shuffle=True, callbacks=[checkpoint])
 
 print get_current_time(), 'Result keys: ', result.history.keys()
 print get_current_time(), 'Training accuracy: ', result.history['acc']
 print get_current_time(), 'Validation accuracy: ', result.history['val_acc']
-file_suffix = '_attention_' + str(opts.attention) + '_srl_' + str(opts.srltags) + '_pos_' + str(opts.postags) + '_bilstm_' \
+file_suffix = '_siamese_' + str(opts.siamese) + '_attention_' + str(opts.attention) + '_srl_' + str(opts.srltags) + '_pos_' + str(opts.postags) + '_bilstm_' \
               + str(opts.bilstm) + '_cnn_' + str(opts.cnn) + '_epochs_' + str(opts.epochs) + '_regularize_' + str(opts.regularize) \
               + '_chunk_' + str(opts.chunk) + '.png'
 
@@ -612,6 +656,10 @@ plt.legend(['train', 'validation'], loc='upper left')
 plt.savefig(output_dir + '/loss' + file_suffix)
 plt.clf()
 
-score, acc = merged_model.evaluate([x1test, x2test,x1test, x2test,x1test, x2test], testy, batch_size=384)
+print get_current_time(), 'Testing the model on test set . . .'
+if opts.baseline == 1:
+    score, acc = merged_model.evaluate([x1_test, x2_test, x1_test, x2_test, x1_test, x2_test], test_y, batch_size=384)
+else:
+    score, acc = merged_model.evaluate(model_inputs_test, test_y, batch_size=384)
 print('Test score:', score)
 print('Test accuracy:', acc)
