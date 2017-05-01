@@ -12,4 +12,3 @@ universe = vanilla
 Notification = complete
 Notify_user = pandian@cs.utexas.edu
 
-arguments = trigger.sh

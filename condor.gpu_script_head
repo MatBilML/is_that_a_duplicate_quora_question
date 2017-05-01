@@ -16,4 +16,3 @@ Notify_user = pandian@cs.utexas.edu
 requirements = Cuda8 && TARGET.GPUSlot && CUDAGlobalMemoryMb >= 6144
 request_GPUs = 1
 
-arguments = trigger.sh
