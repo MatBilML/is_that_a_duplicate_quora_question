@@ -580,7 +580,10 @@ if opts.chunk == 1:
 
 merged_model = Sequential()
 if opts.baseline == 1:
-    merged_model.add(Merge([model1, model2, model3, model4, model5, model6], mode='concat'))
+    if opts.siamese == 1:
+        merged_model.add(Merge([model1, model2, model3, model4, model5s], mode='concat'))
+    else:
+        merged_model.add(Merge([model1, model2, model3, model4, model5, model6], mode='concat'))
 else:
     merged_model.add(Merge(models, mode='concat'))
 
