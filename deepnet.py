@@ -104,13 +104,13 @@ def parseOptions():
                          type='int', dest='attention', default=0,
                          help='Include attention in the model?')
     optParser.add_option('-c', '--cnn', action='store',
-                         type='int', dest='cnn', default=1,
+                         type='int', dest='cnn', default=0,
                          help='add cnn before LSTM?')
     optParser.add_option('-r', '--regularization', action='store',
                          type='int', dest='regularize', default=0,
                          help='L2 regularization in LSTM')
     optParser.add_option('-l', '--bilstm', action='store',
-                         type='int', dest='bilstm', default=1,
+                         type='int', dest='bilstm', default=0,
                          help='Use bilstm')
     optParser.add_option('-p', '--postags', action='store',
                          type='int', dest='postags', default=0,
@@ -137,7 +137,7 @@ def parseOptions():
                          type='int', dest='commonwords', default='0',
                          help='Include common words in the model')
     optParser.add_option('-m', '--siamese', action='store',
-                         type='int', dest='siamese', default='1',
+                         type='int', dest='siamese', default='0',
                          help='Siamese architecture')
     optParser.add_option('-k', '--cwnolstm', action='store',
                          type='int', dest='cwnolstm', default='0',
