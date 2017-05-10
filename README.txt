@@ -17,6 +17,8 @@ pip install pyemd
 pip install fuzzywuzzy
 pip install python-levenshtein
 pip install --upgrade gensim
+pip install pydot
+pip install pydot2
 
 python -m nltk.downloader stopwords
 python -m nltk.downloader averaged_perceptron_tagger
