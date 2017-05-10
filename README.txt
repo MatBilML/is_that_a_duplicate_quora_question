@@ -32,7 +32,8 @@ submit64.cs.utexas.edu:/scratch/cluster/pandian/data/ contains the following nec
 4. quora_features.csv - contains basic features like length of words, number of common words, fuzzy features etc.
 5. quora_additional_features.csv - contains other features like POS tags, SRL tags, Chunk tags, verbs etc. 
 
-Note: The preprocessed feature files can be obtained by running feature_engineering.py and additional_feature_engineering.py but it takes a lot of time to get the features. Hence it is advisable to use the extracted features file. 
+Note1: The preprocessed feature files can be obtained by running feature_engineering.py and additional_feature_engineering.py but it takes a lot of time to get the features. Hence it is advisable to use the extracted features file. 
+Note2: The files in submit64.cs.utexas.edu:/scratch/cluster/pandian/data/ have global read permissions for all users and so using the path directory for --data should ideally work. If it doesn't work out, please copy the files to your home directory and specify it as the --data directory.
 
 ********** Command to run **********
 python -u deepnet.py [command_line_options] 
