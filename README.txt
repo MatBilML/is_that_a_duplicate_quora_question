@@ -1,8 +1,9 @@
 This submission contains the following directories: 
 * src/ - contains the python source files
 * trace/ - contains output trace log for different runs under different sub-directories
+* README.txt - instructions to run the program
 
-*********** To run the program ************
+*********** Running the program ************
 ****** Prerequisites ******
 ****** Installing required python packages ******
 
@@ -34,6 +35,17 @@ submit64.cs.utexas.edu:/scratch/cluster/pandian/data/ contains the following nec
 4. quora_features.csv - contains basic features like length of words, number of common words, fuzzy features etc.
 5. quora_additional_features.csv - contains other features like POS tags, SRL tags, Chunk tags, verbs etc. 
 
+**** Alternate way to download non-feature files ****
+Files other than quora_features.csv and quora_additional_features.csv can also be downloaded online using the following steps: 
+
+mkdir data
+cd data
+wget http://www-nlp.stanford.edu/data/glove.840B.300d.zip
+unzip glove.840B.300d.zip
+rm glove.840B.300d.zip
+wget http://qim.ec.quoracdn.net/quora_duplicate_questions.tsv
+wget https://s3.amazonaws.com/dl4j-distribution/GoogleNews-vectors-negative300.bin.gz
+
 Note1: The preprocessed feature files can be obtained by running feature_engineering.py and additional_feature_engineering.py but it takes a lot of time to get the features. Hence it is advisable to use the extracted features file. 
 Note2: The files in submit64.cs.utexas.edu:/scratch/cluster/pandian/data/ have global read permissions for all users and so using the path directory for --data should ideally work. If it doesn't work out, please copy the files to your home directory and specify it as the --data directory.
 
@@ -61,4 +73,4 @@ sample command:
 python -u deepnet.py --data=/scratch/cluster/pandian/data --output=run123  --epochs=10 --bilstm=1 --siamese=1
 
 * the files present in the data directory will be used by the model for processing. 
-* the checkpoint files are stored in the output directory and also accuracy and loss plots. 
+* the checkpoint files and the accuracy, loss plots will be stored in the output directory.
